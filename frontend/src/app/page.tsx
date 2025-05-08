@@ -1,6 +1,7 @@
 import PortfolioSummary from "./components/PortfolioSummary";
 import HoldingsTable from "./components/HoldingsTable";
 import Chart from "./components/Chart";
+import TopGainers from "./components/TopGainers"; // Import TopGainers
 
 export default function Home() {
   return (
@@ -17,6 +18,10 @@ export default function Home() {
 
         <section className="mb-8">
           <PortfolioSummary />
+        </section>
+
+        <section className="mb-8">
+          <TopGainers /> {/* Add TopGainers here */}
         </section>
 
         <section className="mb-8">

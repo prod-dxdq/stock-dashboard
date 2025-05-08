@@ -7,11 +7,15 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"], # Only allow frontend origin
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+TICKERS = [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "JPM", "V", "DIS",
+    "PEP", "KO", "MCD", "WMT", "NFLX", "BAC", "XOM", "UNH", "PFE", "NKE"
+]
 
 class StockHolding(BaseModel):
     symbol: str
@@ -37,3 +41,20 @@ def get_prices(portfolio: Portfolio):
         price = ticker.info.get("regularMarketPrice", 0)
         prices[stock.symbol] = price
     return {"prices": prices}
+
+@app.get("/screener/gainers")
+def top_gainers():
+    results = []
+    for ticker in TICKERS:
+        try:
+            stock = yf.Ticker(ticker)
+            data = stock.history(period="1d")
+            if len(data) > 1:
+                open_price = data['Open'].iloc[0]
+                close_price = data['Close'].iloc[-1]
+                change_pct = ((close_price - open_price) / open_price) * 100
+                results.append({"symbol": ticker, "change": round(change_pct, 2)})
+        except:
+            continue
+    results.sort(key=lambda x: x["change"], reverse=True)
+    return results[:10]
