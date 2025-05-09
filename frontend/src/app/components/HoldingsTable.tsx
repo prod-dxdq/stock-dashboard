@@ -9,23 +9,39 @@ type Holding = {
   buyPrice: number;
 };
 
-const holdings: Holding[] = [
-  { symbol: "AAPL", shares: 10, buyPrice: 145 },
-  { symbol: "GOOGL", shares: 5, buyPrice: 110 },
-  { symbol: "TSLA", shares: 8, buyPrice: 210 },
-];
-
 export default function HoldingsTable() {
+  const [holdings, setHoldings] = useState<Holding[]>([]);
   const [prices, setPrices] = useState<{ [symbol: string]: number }>({});
+  const [validSymbols, setValidSymbols] = useState<string[]>([]);
 
+  // Fetch valid symbols from the backend
   useEffect(() => {
     axios
-      .post("http://localhost:8000/portfolio/prices", { holdings })
+      .get("http://localhost:8000/symbols") // Fetch symbols from the backend
       .then((res) => {
-        setPrices(res.data.prices);
+        setValidSymbols(res.data.symbols); // Set valid symbols
+        setHoldings(
+          res.data.symbols.map((symbol: string) => ({
+            symbol,
+            shares: 0,
+            buyPrice: 0,
+          }))
+        );
       })
-      .catch((err) => console.error("AxiosError:", err));
+      .catch((err) => console.error("Error fetching symbols:", err));
   }, []);
+
+  // Fetch live prices for the holdings
+  useEffect(() => {
+    if (holdings.length > 0) {
+      axios
+        .post("http://localhost:8000/portfolio/prices", { holdings })
+        .then((res) => {
+          setPrices(res.data.prices);
+        })
+        .catch((err) => console.error("AxiosError:", err));
+    }
+  }, [holdings]);
 
   return (
     <div className="bg-white shadow-md rounded-lg p-6">

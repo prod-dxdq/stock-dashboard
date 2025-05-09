@@ -1,7 +1,10 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import yfinance as yf
-from fastapi.middleware.cors import CORSMiddleware
+import pandas as pd
+from sklearn.linear_model import LogisticRegression
+
 
 app = FastAPI()
 
@@ -58,3 +61,31 @@ def top_gainers():
             continue
     results.sort(key=lambda x: x["change"], reverse=True)
     return results[:10]
+
+@app.get("/predict/{symbol}")
+def predict_stock_movement(symbol: str):
+    df = yf.download(symbol, period="60d", interval="1d")
+
+    df["Return"] = df["Close"].pct_change()
+    df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
+    df = df.dropna()
+
+    X = df[["Return"]]
+    y = df["Target"]
+
+    model = LogisticRegression()
+    model.fit(X, y)
+
+    latest_return = df["Return"].iloc[-1]
+    prediction = model.predict([[latest_return]])[0]
+    proba = model.predict_proba([[latest_return]])[0][1]
+
+    return {
+        "symbol": symbol,
+        "prediction": "up" if prediction == 1 else "down",
+        "confidence": round(proba, 2)
+    }
+
+@app.get("/symbols")
+def get_symbols():
+    return {"symbols": TICKERS}
