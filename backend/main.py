@@ -4,6 +4,8 @@ from pydantic import BaseModel
 import yfinance as yf
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
+from fastapi.responses import StreamingResponse
+import io
 
 
 app = FastAPI()
@@ -40,9 +42,13 @@ def get_portfolio_value(portfolio: Portfolio):
 def get_prices(portfolio: Portfolio):
     prices = {}
     for stock in portfolio.holdings:
-        ticker = yf.Ticker(stock.symbol)
-        price = ticker.info.get("regularMarketPrice", 0)
-        prices[stock.symbol] = price
+        try:
+            ticker = yf.Ticker(stock.symbol)
+            history = ticker.history(period="1d")
+            price = history["Close"].iloc[-1] if not history.empty else 0
+            prices[stock.symbol] = price
+        except Exception as e:
+            prices[stock.symbol] = 0  # Default to 0 if there's an error
     return {"prices": prices}
 
 @app.get("/screener/gainers")
@@ -66,26 +72,91 @@ def top_gainers():
 def predict_stock_movement(symbol: str):
     df = yf.download(symbol, period="60d", interval="1d")
 
+    # Create features
     df["Return"] = df["Close"].pct_change()
+    df["Volatility"] = df["Return"].rolling(window=5).std()
     df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
     df = df.dropna()
 
-    X = df[["Return"]]
+    if len(df) < 20:
+        return {"error": "Not enough data for symbol"}
+
+    # Features and target
+    X = df[["Return", "Volatility"]]
     y = df["Target"]
 
+    # Train the model
     model = LogisticRegression()
     model.fit(X, y)
 
-    latest_return = df["Return"].iloc[-1]
-    prediction = model.predict([[latest_return]])[0]
-    proba = model.predict_proba([[latest_return]])[0][1]
+    # Predict for the latest data point
+    latest_features = X.iloc[-1].values.reshape(1, -1)
+    prediction = model.predict(latest_features)[0]
+    confidence = model.predict_proba(latest_features)[0][prediction]
 
     return {
         "symbol": symbol,
         "prediction": "up" if prediction == 1 else "down",
-        "confidence": round(proba, 2)
+        "confidence": round(confidence * 100, 2)
     }
 
 @app.get("/symbols")
 def get_symbols():
     return {"symbols": TICKERS}
+
+@app.get("/plot/decision-boundary/{symbol}")
+def get_decision_boundary(symbol: str):
+    import yfinance as yf
+    import pandas as pd
+    import numpy as np
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.preprocessing import StandardScaler
+    import matplotlib.pyplot as plt
+    import io
+
+    df = yf.download(symbol, period="60d", interval="1d")
+
+    df["Return"] = df["Close"].pct_change()
+    df["Volatility"] = df["Return"].rolling(window=5).std()
+    df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
+    df = df.dropna()
+
+    if len(df) < 20:
+        return {"error": "Not enough data for symbol"}
+
+    X = df[["Return", "Volatility"]]
+    y = df["Target"]
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    model = LogisticRegression()
+    model.fit(X_scaled, y)
+
+    # Grid for boundary
+    x_min, x_max = X_scaled[:, 0].min() - 1, X_scaled[:, 0].max() + 1
+    y_min, y_max = X_scaled[:, 1].min() - 1, X_scaled[:, 1].max() + 1
+    xx, yy = np.meshgrid(np.linspace(x_min, x_max, 300), np.linspace(y_min, y_max, 300))
+
+    Z = model.predict(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
+
+    # Plot
+    fig, ax = plt.subplots()
+    ax.contourf(xx, yy, Z, alpha=0.3, cmap=plt.cm.coolwarm)
+    ax.scatter(X_scaled[:, 0], X_scaled[:, 1], c=y, edgecolors='k', cmap=plt.cm.coolwarm)
+    ax.set_xlabel("Return (scaled)")
+    ax.set_ylabel("Volatility (scaled)")
+    ax.set_title(f"Decision Boundary: {symbol}")
+
+    # Add legend
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor='blue', edgecolor='k', label='Price Down'),
+        Patch(facecolor='red', edgecolor='k', label='Price Up')
+    ]
+    ax.legend(handles=legend_elements, loc='upper right')
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png")
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="image/png")

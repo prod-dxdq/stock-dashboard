@@ -1,9 +1,21 @@
+"use client";
+
+import { useState } from "react";
 import PortfolioSummary from "./components/PortfolioSummary";
 import HoldingsTable from "./components/HoldingsTable";
 import Chart from "./components/Chart";
-import Prediction from "./components/Prediction"; // Import Prediction
+import Prediction from "./components/Prediction";
+import DecisionBoundary from "./components/DecisionBoundary";
+
+type Holding = {
+  symbol: string;
+  shares: number;
+  buyPrice: number;
+};
 
 export default function Home() {
+  const [holdings, setHoldings] = useState<Holding[]>([]); // State for holdings
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-blue-50 to-white text-gray-800 p-6 font-sans">
       <div className="max-w-7xl mx-auto">
@@ -17,20 +29,25 @@ export default function Home() {
         </header>
 
         <section className="mb-8">
-          <PortfolioSummary />
+          <PortfolioSummary holdings={holdings} />
         </section>
 
         <section className="mb-8">
-          <Prediction /> {/* Add Prediction component here */}
+          <Prediction />
         </section>
 
         <section className="mb-8">
-          <HoldingsTable />
+          <HoldingsTable holdings={holdings} setHoldings={setHoldings} />
         </section>
 
-        <section>
-          <Chart />
+        <section className="mb-8">
+          <Chart holdings={holdings} setHoldings={setHoldings} />
         </section>
+
+        <section className="mb-8">
+          <DecisionBoundary />
+        </section>
+
       </div>
     </main>
   );

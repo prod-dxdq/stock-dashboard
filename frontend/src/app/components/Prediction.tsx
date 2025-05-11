@@ -4,14 +4,15 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 
 export default function Prediction() {
-  const [symbols, setSymbols] = useState<string[]>([]); // Dynamically fetched symbols
+  const [symbols, setSymbols] = useState<string[]>([]);
   const [selectedStock, setSelectedStock] = useState<string>("");
   const [result, setResult] = useState<{ prediction: string; confidence: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch symbols from the backend
   useEffect(() => {
     axios
-      .get("http://localhost:8000/symbols") // Fetch symbols from the backend
+      .get("http://localhost:8000/symbols")
       .then((res) => {
         setSymbols(res.data.symbols);
         setSelectedStock(res.data.symbols[0]); // Set the first symbol as the default
@@ -24,7 +25,15 @@ export default function Prediction() {
     if (selectedStock) {
       axios
         .get(`http://localhost:8000/predict/${selectedStock}`)
-        .then((res) => setResult(res.data))
+        .then((res) => {
+          if (res.data.error) {
+            setError(res.data.error);
+            setResult(null);
+          } else {
+            setResult(res.data);
+            setError(null);
+          }
+        })
         .catch((err) => console.error(err));
     }
   }, [selectedStock]);
@@ -48,7 +57,9 @@ export default function Prediction() {
         </select>
       </label>
 
-      {result ? (
+      {error ? (
+        <p className="text-red-600">{error}</p>
+      ) : result ? (
         <div className="mt-4 text-lg text-gray-800">
           <p>
             <span className="font-medium">Symbol:</span> <strong>{selectedStock}</strong>
@@ -58,7 +69,7 @@ export default function Prediction() {
           </p>
           <p>
             <span className="font-medium">Confidence:</span>{" "}
-            <strong>{(result.confidence * 100).toFixed(1)}%</strong>
+            <strong>{result.confidence}%</strong>
           </p>
         </div>
       ) : (

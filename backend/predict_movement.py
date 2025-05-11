@@ -12,6 +12,10 @@ print(df.tail())
 
 # create daily return
 df["Return"] = df["Close"].pct_change()
+df["MA_5"] = df["Close"].rolling(window=5).mean()
+df["MA_10"] = df["Close"].rolling(window=10).mean()
+df["Volatility"] = df["Return"].rolling(window=5).std()
+df["Volume_Change"] = df["Volume"].pct_change()
 
 # create label: 1 if price went up day, else 0
 df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
@@ -20,7 +24,7 @@ df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
 df = df.dropna()
 
 # split the data
-x = df[["Return"]]
+X = df[["Return", "MA_5", "MA_10", "Volatility", "Volume_Change"]]
 y = df["Target"]
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
