@@ -5,6 +5,7 @@ import yfinance as yf
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from fastapi.responses import StreamingResponse
+from fastapi import Query
 import io
 
 
@@ -160,3 +161,74 @@ def get_decision_boundary(symbol: str):
     plt.savefig(buf, format="png")
     buf.seek(0)
     return StreamingResponse(buf, media_type="image/png")
+
+@app.get("/suggestions")
+def get_buy_suggestions():
+    suggestions = []
+
+    for symbol in TICKERS:
+        try:
+            df = yf.download(symbol, period="60d", interval="1d")
+            df["Return"] = df["Close"].pct_change()
+            df["Volatility"] = df["Return"].rolling(window=5).std()
+            df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
+            df = df.dropna()
+
+            if len(df) < 20:
+                continue
+
+            X = df[["Return", "Volatility"]]
+            y = df["Target"]
+
+            model = LogisticRegression()
+            model.fit(X, y)
+
+            latest = X.iloc[-1].values.reshape(1, -1)
+            proba = model.predict_proba(latest)[0][1]  # probability of 'up'
+
+            suggestions.append({
+                "symbol": symbol,
+                "confidence": round(proba * 100, 2)
+            })
+
+        except:
+            continue
+
+    suggestions.sort(key=lambda x: x["confidence"], reverse=True)
+    return suggestions[:5]  # top 5 suggestions
+
+@app.get("/screener/filter")
+def screen_stocks(
+    price_min: float = Query(0),
+    price_max: float = Query(1_000_000),
+    change_min: float = Query(-100),
+    change_max: float = Query(100)
+):
+    results = []
+
+    for symbol in TICKERS:
+        try:
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(period="2d")
+
+            if len(df) < 2:
+                continue
+
+            latest = df.iloc[-1]
+            prev = df.iloc[-2]
+
+            price = latest["Close"]
+            change_pct = ((latest["Close"] - prev["Close"]) / prev["Close"]) * 100
+
+            if price_min <= price <= price_max and change_min <= change_pct <= change_max:
+                results.append({
+                    "symbol": symbol,
+                    "price": round(price, 2),
+                    "changePct": round(change_pct, 2)
+                })
+
+        except Exception as e:
+            print(f"Error with {symbol}: {e}")
+            continue
+
+    return {"results": results}
